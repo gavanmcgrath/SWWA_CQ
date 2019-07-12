@@ -37,6 +37,7 @@ piecewiseBayes <- function(data, fname = NULL){
   burnin <- 5000
   nsamples <- burnin*3
   
+  #Function to Bayes fit a piecewise-linear (power-law) C-Q
   piecewise <- function(params,x = data$x){
     
     a1    <- params[1] #1st intercept
@@ -75,7 +76,7 @@ piecewiseBayes <- function(data, fname = NULL){
     if (sum == FALSE) return(llValues)
     else return(sum(llValues))
   }
-  
+  #prior
   prior <- createTruncatedNormalPrior(
     mean = refPars$best[parSel],
     sd = refPars$sd[parSel],
@@ -84,20 +85,25 @@ piecewiseBayes <- function(data, fname = NULL){
   
   setup <- createBayesianSetup(ll, prior,
                                names = rownames(refPars)[parSel])
-  
+  #Markov Chain Monte Carlo
   out <- runMCMC(bayesianSetup = setup, 
                  sampler = "DEzs", 
                  settings = list(iterations = nsamples,  
                                  message = FALSE, 
                                  nrChains = 3))
   
-  #prior.parMatrix = out[[1]]$setup$prior$sampler(nsamples)
+  #Sample from posterior
   post.parMatrix = getSample(out, start = 3000,end = burnin, thin = 5)
+  
   #calc b2 so we can generate stats for it
   b2 <- post.parMatrix[,2] - post.parMatrix[,3]
   post.parMatrix <- cbind(post.parMatrix,b2)
+  
+  #Extract credible intervals
   CredInts <- getCredibleIntervals(post.parMatrix, quantiles = c(0.025, 0.5, 0.975))
   colnames(CredInts) <- c("a1","b1","delta","x0","sigma","b2")
+  
+  #get the predicted intervals 95%
   getPredInt <- function(parMatrix,model, data, numSamples = 1000,
                          quantiles = c(0.025, 0.975)){
     x2 <- sort(data$x,index.return = TRUE)
@@ -111,6 +117,8 @@ piecewiseBayes <- function(data, fname = NULL){
   }
   
   gPI <- getPredInt(post.parMatrix[,1:5],piecewise, data)
+  
+  #do some plotting
   if(!is.null(fname)) pdf(file = fname)
   plot(data, type = "n", xlab = "", ylab = "")
   if (!is.null(data$id)) mtext(line = 1, side =3, data$id)
@@ -123,7 +131,6 @@ piecewiseBayes <- function(data, fname = NULL){
   }
   mtext(side = 1, line = 3, xnm)
   mtext(side = 2, line = 2.5, ynm)
-  
   polygon(c(gPI$x,rev(gPI$x),gPI$x[1]),c(gPI[,"p02.5"],rev(gPI[,"p97.5"]),gPI[1,"p02.5"]), col = rgb(0,0,1,0.3), border =  rgb(0,0,1,0.3) )
   lines(gPI$x,gPI[,"p50"], col = rgb(0,0,1,0.7), lwd=2)
   points(data,pch=16)
@@ -137,10 +144,14 @@ piecewiseBayes <- function(data, fname = NULL){
          legend = c("95%","50%","Observed"),
          bty = "n")
   if(!is.null(fname)) dev.off()
+  
+  #output
   return(list(cedIntervals = CredInts,
               DIC = DIC(out),
               WAIC = WAIC(out)))
 }
+
+#Function to Bayes fit a linear (power-law) C-Q
 lmBayes <- function(data, fname = NULL){
   
   refPars <- matrix(NA,nrow=3,ncol=4)
@@ -165,13 +176,12 @@ lmBayes <- function(data, fname = NULL){
   
   refPars <- as.data.frame(refPars)
   
-  
   refPars <- as.data.frame(refPars)
   parSel = c(1:3) #Parameters to select for calibration
   
   burnin <- 5000
   nsamples <- burnin*3
-  
+  #Model
   piecewise <- function(params,data = data){
     
     a1    <- params[1] #1st intercept
@@ -194,6 +204,7 @@ lmBayes <- function(data, fname = NULL){
     else return(sum(llValues))
   }
   
+  #Prior distribution
   prior <- createTruncatedNormalPrior(
     mean = refPars$best[parSel],
     sd = refPars$sd[parSel],
@@ -202,17 +213,21 @@ lmBayes <- function(data, fname = NULL){
   
   setup <- createBayesianSetup(ll, prior,
                                names = rownames(refPars)[parSel])
-  
+  #Markov Chain Monte Carlo
   out <- runMCMC(bayesianSetup = setup, 
                  sampler = "DEzs", 
                  settings = list(iterations = nsamples,  
                                  message = FALSE, 
                                  nrChains = 3))
   
-  #prior.parMatrix = out[[1]]$setup$prior$sampler(nsamples)
+  #Sample from posterior
   post.parMatrix = getSample(out, start = 3000,end = burnin)
+  
+  #Credible interval
   CredInts <- getCredibleIntervals(post.parMatrix, quantiles = c(0.025, 0.5, 0.975))
   colnames(CredInts) <- c("a1","b1","sigma")
+  
+  #Predictive interval 95%
   getPredInt <- function(parMatrix,model, data, numSamples = 1000,
                          quantiles = c(0.025, 0.975)){
     x2 <- sort(data$x,index.return = TRUE)
@@ -226,6 +241,9 @@ lmBayes <- function(data, fname = NULL){
   }
   
   gPI <- getPredInt(post.parMatrix,piecewise, data)
+  
+              
+  #Some plotting     
   if(!is.null(fname)) pdf(file = fname)
   plot(data, type = "n", xlab = "", ylab = "")
   if (!is.null(data$id)) mtext(line = 1, side =3, data$id)
@@ -258,6 +276,7 @@ lmBayes <- function(data, fname = NULL){
   )
 }
 
+#Read the shapefile names from the databse to get a list of sites                   
 sites <- list.files(path = "D:\\WIRT\\GIS",
                     pattern = "*.shp")
 sites <- sites[grep("Basin",sites)]
@@ -265,9 +284,9 @@ SITE_REFs <- unlist(strsplit(sites,"Basin"))
 SITE_REFs <- SITE_REFs[SITE_REFs != ""]
 SITE_REFs <- unlist(strsplit(SITE_REFs,".shp"))
 
+#Create a vector of rds file names saved from file xxxx                   
 files <- paste0(paste0("D:\\WIRT\\Processed_CQDiscrete\\CQ_",SITE_REFs),".RDS")
 CQExists <- file.exists(files)
-
 
 
 setwd("D:\\WIRT\\Processed_CQDiscrete")
@@ -276,6 +295,8 @@ all.rds <- all.rds[grep("CQ",all.rds)]
 ulist <- list()
 for (i in 1:length(all.rds)){
   print(i)
+  
+  #read the datafile for the site
   dat <- readRDS(all.rds[i])
   is.Q <- !is.na(dat$MeanDischarge_m3persec)
   counts <- apply(dat,MARGIN=2, FUN = function(x) { sum(!is.na(x) & is.Q)})
