@@ -1,5 +1,6 @@
 library(BayesianTools)
 
+#Function to estimate segmented power-law C-Q parameters via Bayesian estimation
 piecewiseBayes <- function(data, fname = NULL){
   
   refPars <- matrix(NA,nrow=5,ncol=4)
@@ -418,26 +419,21 @@ nameDB <- matrix(c("Acidity (tot) (CaCO3) | mg/L"        , "MI"
                    , "Zn (tot) | mg/L"                     ,"TM"),
                  byrow = TRUE,ncol=2)
 
+#Generate a list of solutes per site
 soluteSiteList <- vector("list",length=length(files))
 for (j in 1:length(files)){
   print(files[j])
   solutes <- c("")
   if (file.exists(files[j])){ #Does a file exist
     print(file.exists(files[j]))
-    CQ <- readRDS(file=files[j])  #may need a check here for any data
+    CQ <- readRDS(file=files[j])  #read file
     siteref <- strsplit(files[j],split = "CQ_")[[1]][2]
     varsInUlist <- ulist[[paste0("CQ_",siteref)]]
     nmConc <- names(CQ)[names(CQ) %in% nameDB[,1]] #names(varsInUlist)
     dbColumns <- which(nameDB %in% nmConc)
-    #length(nmConc)
-    
     for (i in 1:length(nmConc)){
-      #dates <- as.Date(substr(CQ$`Collect Date (Known Accuracy)`,1,11), format = "%d-%b-%Y")
       pos <- !is.na(as.numeric(c(CQ[,nmConc[i]])[[1]])) & is.finite(log10(as.numeric(CQ$MeanDischarge_m3persec) ))
       if (sum(pos)>50){
-        #print(sum(pos))
-       # meddate <- median(as.numeric(dates[pos ]))
-        #print(dates[pos ][which(as.numeric(dates[pos ]) == meddate)])
         solutes <- c(solutes, nmConc[i])
       }
     }
@@ -445,7 +441,7 @@ for (j in 1:length(files)){
     soluteSiteList[[j]] <- solutes 
 }
 
-      
+#Create an ajdacency matrix, site by solute      
 uniqueChems <- sort(unique(unlist(soluteSiteList)))
 df <- data.frame(file = files)
 df2 <- matrix(NA,nrow=length(files),ncol= length(uniqueChems)-1)
@@ -463,9 +459,8 @@ for (j in 1:length(files)){
 }
 
 
-
+#Read in sites - solutes loop through each and conduct Bayesian regressions
 siteSolutes <- read.csv("D:\\WIRT\\Processed_CQDiscrete\\SiteSolutes.csv", skip = 1)
-
 sites2process <- which(siteSolutes$Number>0)
 bayesResults <- list()
 library(stringr)
@@ -473,10 +468,10 @@ for (i in 1:length(sites2process)){
   print(paste0(siteSolutes[sites2process[i],3]))
   chems2process <- names(siteSolutes)[4:dim(siteSolutes)[2]][which(!is.na(siteSolutes[sites2process[i],4:dim(siteSolutes)[2]]) )]
   CQ <- readRDS(file=as.character(siteSolutes[sites2process[i],3]))
+  #Format names
   names(CQ) <- str_replace_all(names(CQ) , "[[:punct:]]", ".")
   names(CQ) <- str_replace_all(names(CQ) , "\\| ", ".")
   names(CQ) <- gsub(" ",".",names(CQ))
-  #names(CQ) <- gsub("(\\+|\\%|\\,|\\(|\\)|\\||\\/|\\{|\\}| > | < |\\-)",".",names(CQ))
   names(CQ) <- gsub("\\.\\.",".", names(CQ))  
   names(CQ) <- gsub("\\.\\.",".", names(CQ))  
   names(CQ) <- gsub("<",".", names(CQ)) 
@@ -491,7 +486,6 @@ for (i in 1:length(sites2process)){
     j2 <- gsub("\\.\\.",".",j)  
     j2 <- gsub("\\.\\.",".",j2)  
     j2 <- gsub("\\.\\.",".",j2) 
-    #j2 <- paste0(gsub("\\.\\.",".",j2),".")
     print(paste(j2))
     concs <- CQ[,j2]
     pos.lor <- grep("<",concs)
@@ -569,6 +563,7 @@ for (i in 1:length(sites2process)){
 }
 saveRDS(bayesResults,"bayesResults.RDS")
 
+#Evaluate C-Q statistics
 nmBayes <- names(bayesResults)
 for (i in 1:length(bayesResults)) {
   print(nmBayes[i])
@@ -678,9 +673,9 @@ for (i in 1:length(nmBayes)){
     df[counter,"start.date"] <- as.character(results[[solutes[[j]]]]$data$start.date)
     df[counter,"end.date"] <- as.character(results[[solutes[[j]]]]$data$end.date)
     df[counter,"med.date"] <- as.character(results[[solutes[[j]]]]$data$med.date)
-    df[counter,"n1"] <- as.character(results[[solutes[[j]]]]$data$med.date)
-    df[counter,"n2"] <- as.character(results[[solutes[[j]]]]$data$med.date)
-    df[counter,"nall"] <- as.character(results[[solutes[[j]]]]$data$med.date)
+    df[counter,"n1"] <- length(as.character(results[[solutes[[j]]]]$data$med.date))
+    df[counter,"n2"] <- length(as.character(results[[solutes[[j]]]]$data$med.date))
+    df[counter,"nall"] <- length(as.character(results[[solutes[[j]]]]$data$med.date))
     
     
     df[counter,9:dim(df)[2]] <- c(
@@ -750,7 +745,7 @@ plot(samden,xaxt="n",xlab="",ylab = "",lwd=2,yaxt="n")
 axis(side =2, at=seq(0,800,by=200),las=1)
 dev.off()
 
-#Classify all as PL or BSPL
+#Classify model types
 #DIC: The idea is that models with smaller DIC should be preferred to models with larger DIC. Models are penalized both by the value of D ¯ {\displaystyle {\bar {D}}} \bar{D}, which favors a good fit, but also (similar to AIC) by the effective number of parameters p D {\displaystyle p_{D}} p_{D}
 # IC: the model with the lowest BIC is preferred
 
@@ -959,12 +954,7 @@ CQModel <- function(df){
   #             pw_a500, pw_x500, pw_delta500, pw_b500
   list(mod = model,pars = params)
 }
-#c(df$lm_DIC, df$pw_DIC, 
-#df$delta025, df$delta975, 
-#df$pwb025, df$pwb975,
-#df$lmb025,df$lmb975
-#df$lm_x500, df$lm_b500, 
-#df$pw_a500, df$pw_x500, df$pw_delta500, df$pw_b500)
+
 df <- bf[,c("lmall_DIC","pwall_DIC",
             "pwall_delta_025","pwall_delta_975",
             "pwall_b1_025","pwall_b1_975",
@@ -1070,7 +1060,6 @@ names(df) <- c("lm_DIC", "pw_DIC",
 # [166] "CVCCVQ_t2"      "minC_t2"        "maxC_t2"        "minQ_t2"        "maxQ_t2"
 
 
-
 modt1 <- unlist(lapply(t1res,FUN = function(x) x$mod))
 modt2 <- unlist(lapply(t2res,FUN = function(x) x$mod))
 modall <- unlist(lapply(allres,FUN = function(x) x$mod))
@@ -1079,18 +1068,17 @@ t1days <- unlist(lapply(t1res,FUN = function(x) as.Date(x$dates[1,3]) - as.Date(
 models <- data.frame(mod.t1 = modt1, mod.t2 = modt2, mod.all = modall , t1.days = t1days, t2.days = t2days)
 
 bf <- cbind(bf,data.frame(mod.t1 = modt1, mod.t2 = modt2, mod.all = modall , t1days = t1days, t2days = t2days))
-#bf <- cbind(bf,data.frame(t1days = t1days, t2days = t2days))
+
+
 pos <- which(bf$mod.t1 %in% c("AA1","AA2","AD","DA","CA","AC","DD1","DD2","DC","CD") & bf$mod.t2 %in% c("AA1","AA2","AD","DA","CA","AC","DD1","DD2","DC","CD"))
 plot(bf$pwt1_x0_500[pos],bf$pwt2_x0_500[pos]-bf$pwt1_x0_500[pos])
 summary(lm((bf$pwt2_x0_500[pos]-bf$pwt1_x0_500[pos])~bf$pwt1_x0_500[pos]))
 abline(coefficients(lm((bf$pwt2_x0_500[pos]-bf$pwt1_x0_500[pos])~bf$pwt1_x0_500[pos])))
 
 
-
 #Test whether the proportion of chemostatic models was more than  just chance
 mods <- c("A","D","C")
 pos1 <- which(as.character(bf$mod.t1) %in% mods & as.character(bf$mod.t2) %in% mods )
-
 pos <- which( as.character(bf$mod.t1) %in% mods & as.character(bf$mod.t2) %in% mods & (
   (bf$lmt1_b_500 < 0 & (bf$lmt2_b_500 - bf$lmt1_b_500) > 0 & (bf$lmt2_b_500 - bf$lmt1_b_500) < -2*bf$lmt1_b_500) |
     (bf$lmt1_b_500 >= 0 & (bf$lmt2_b_500 - bf$lmt1_b_500) < 0 & (bf$lmt2_b_500 - bf$lmt1_b_500) > -2*bf$lmt1_b_500)))
@@ -1102,11 +1090,9 @@ binom.test(length(pos), length(pos1), p = 3/8,
            conf.level = 0.95)
 
 #same but for segmented models
-
 #first exponent
 mods <- c("A","D","C","AA1","AA2","AD","DA","CA","AC","DD1","DD2","DC","CD")
 pos1 <- which(bf$mod.t1 %in% mods & bf$mod.t2 %in% mods )
-
 pos <- which( bf$mod.t1 %in% mods & bf$mod.t2 %in% mods & (
   (bf$pwt1_b1_500 < 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) > 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) < -2*bf$pwt1_b1_500) |
     (bf$pwt1_b1_500 >= 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) < 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) > -2*bf$pwt1_b1_500)))
@@ -1120,7 +1106,6 @@ binom.test(length(pos), length(pos1), p = 3/8,
 #both
 mods <- c("A","D","C","AA1","AA2","AD","DA","CA","AC","DD1","DD2","DC","CD")
 pos1 <- which(bf$mod.t1 %in% mods & bf$mod.t2 %in% mods )
-
 pos <- which( bf$mod.t1 %in% mods & bf$mod.t2 %in% mods & (
   (bf$pwt1_b2_500 < 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) > 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) < -2*bf$pwt1_b2_500) |
     (bf$pwt1_b2_500 >= 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) < 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) > -2*bf$pwt1_b2_500)) &
@@ -1129,7 +1114,6 @@ pos <- which( bf$mod.t1 %in% mods & bf$mod.t2 %in% mods & (
         (bf$pwt1_b1_500 >= 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) < 0 & (bf$pwt2_b1_500 - bf$pwt1_b1_500) > -2*bf$pwt1_b1_500)))
 length(pos)
 length(pos1)
-
 binom.test(length(pos), length(pos1), p = 3/8,
            alternative ="less",
            conf.level = 0.95)
@@ -1137,13 +1121,11 @@ binom.test(length(pos), length(pos1), p = 3/8,
 #second
 mods <- c("A","D","C","AA1","AA2","AD","DA","CA","AC","DD1","DD2","DC","CD")
 pos1 <- which(bf$mod.t1 %in% mods & bf$mod.t2 %in% mods )
-
 pos <- which( bf$mod.t1 %in% mods & bf$mod.t2 %in% mods & (
   (bf$pwt1_b2_500 < 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) > 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) < -2*bf$pwt1_b2_500) |
     (bf$pwt1_b2_500 >= 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) < 0 & (bf$pwt2_b2_500 - bf$pwt1_b2_500) > -2*bf$pwt1_b2_500)))
 length(pos)
 length(pos1)
-
 binom.test(length(pos), length(pos1), p = 3/8,
            alternative ="greater",
            conf.level = 0.95)
@@ -1156,10 +1138,10 @@ pos <- which(bf$mod.t1 %in% mods & bf$mod.t2 %in% mods )
 plot(c(bf$meanlogQ_t1[pos],bf$meanlogQ_t2[pos]),c(bf$lmt1_b_500[pos],bf$lmt2_b_500[pos]))
 summary(lm((bf$lmt2_b_500[pos] - bf$lmt1_b_500[pos])~(bf$meanlogQ_t2[pos]-bf$meanlogQ_t1[pos])))
 
+#Adjacency list for chord diagram
 mod.types = levels(models$mod.t2)
 combos <- expand.grid(1:length(mod.types),1:length(mod.types))
 adj.list <- data.frame(from = mod.types[combos[,1]],to = mod.types[combos[,2]],value = rep(0,length(combos[,1])))
-
 for (i in 1:nrow(adj.list)){
   adj.list[i,3] = length(which(as.character(models[,1]) == as.character(adj.list[i,1]) & as.character(models[,2]) == as.character(adj.list[i,2]) & 
                                  models$t1.days > 3650 & models$t2.days > 3650))
@@ -1168,26 +1150,17 @@ adj.list[,2] <- paste0(as.character(adj.list[,2]), ".t2")
 adj.list[,1] <- paste0(as.character(adj.list[,1]), ".t1")
 
 library(circlize)
-
 library(ggsci)
-#cols <- rev(add_transparency(
-#         pal_simpsons("springfield")(length(mod.types)),  
-#         transparency = 0.2))
 library(RColorBrewer)
 set.seed(13)
 cols <- sample(brewer.pal(12, "Paired"), 12,replace = FALSE)[1:length(mod.types)]
-#names(cols) <- mod.types
 grid.col1 = cols
-#names(grid.col1) <- mod.types
 
 order = c(unique(adj.list[,1]),rev(unique(adj.list[,2])))
 # "A.t1"   "C.t1"   "D.t1"   "AA1.t1" "AA2.t1" "DD1.t1" "DD2.t1" "CA.t1" 
 # "CD.t1"  "AC.t1"  "AD.t1"  "DC.t1"  "DA.t1"  "DA.t2"  "DC.t2"  "AD.t2" 
 # "AC.t2"  "CD.t2"  "CA.t2"  "DD2.t2" "DD1.t2" "AA2.t2" "AA1.t2" "D.t2"  
 # "C.t2"   "A.t2"
-
-#order = c(c("AA2.t1","A.t1","AA1.t1","AC.t1","AD.t1", "C.t1","CA.t1","CD.t1","DA.t1","DD1.t1","D.t1", "DC.t1", "DD2.t1"),rev(c("AA2.t2","A.t2","AA1.t2","AC.t2","AD.t2", "C.t2","CA.t2","CD.t2","DA.t2","DD1.t2","D.t2", "DC.t2", "DD2.t2")))
-#color.order <- sapply(unlist(lapply(strsplit(order,".t"),FUN = function(x) x[1])), FUN = function(y) which(mod.types == y))
 gridcols <- c(grid.col1,rev(grid.col1))
 names(gridcols) <- order
 
@@ -1199,15 +1172,11 @@ chordDiagram(adj.list[,c(1,2,3)],order = order,
              link.sort = TRUE, link.decreasing = TRUE, 
              annotationTrack = "grid", 
              preAllocateTracks = list(track.height = max(strwidth(unlist(unique(c(adj.list[,1:2])))))))
-# we go back to the first track and customize sector labels
+#customize sector labels
 circos.track(track.index = 1, panel.fun = function(x, y) {
   circos.text(CELL_META$xcenter, CELL_META$ylim[1], CELL_META$sector.index, 
               facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5))
 }, bg.border = NA) # here set bg.border to NA is important
-
-#abline(h = 0, lty = 2, col = "#00000080")
-#mtext(side = 1, line = -2, "Time Period 1")
-#mtext(side = 3, line = -2, "Time Period 2")
 circos.clear()
 
 
@@ -1218,12 +1187,10 @@ model.solute.list <- data.frame(
   from =  sort(unique(bf$solute))[combos[,2]],
   to = mod.types[combos[,1]],
   value = rep(0,length(combos[,1])))
-
 for (i in 1:nrow(model.solute.list)){
   model.solute.list[i,3] = length(which(as.character(bf$solute) == as.character(model.solute.list[i,1]) & as.character(models[,3]) == as.character( model.solute.list[i,2])))
 }
 
-#par(mfrow = c(1,3))
 #Nutrients
 oldSols <- c("Alkalinity.HCO3.HCO3.mg.L","Alkalinity.tot.CaCO3.mg.L","Ca.sol.mg.L","Cl.sol.mg.L","K.tot.mg.L","Mg.sol.mg.L","SiO2.Si.sol.react.mg.L","SiO2.sol.react.mg.L", "Hardness.tot.CaCO3.Ca.Mg.mg.L","Cond.comp.25.deg.C.in.situ.uS.cm")
 newSols <- c("HCO3","CaCO3","Ca","Cl","K","Mg","Si","SiO2","Ca.Mg","EC")
@@ -1258,7 +1225,7 @@ circos.track(track.index = 1, panel.fun = function(x, y) {
 }, bg.border = NA) # here set bg.border to NA is important
 circos.clear()
 
-#tracers
+#Geogenic
 oldSols <- c("Alkalinity.HCO3.HCO3.mg.L","Alkalinity.tot.CaCO3.mg.L","Ca.sol.mg.L","Cl.sol.mg.L","K.tot.mg.L","Mg.sol.mg.L","SiO2.Si.sol.react.mg.L","SiO2.sol.react.mg.L", "Hardness.tot.CaCO3.Ca.Mg.mg.L","Cond.comp.25.deg.C.in.situ.uS.cm")
 newSols <- c("HCO3","CaCO3","Ca","Cl","K","Mg","Si","SiO2","Ca.Mg","EC")
 order = c(mod.types,newSols)
@@ -1336,9 +1303,13 @@ db <- data.frame(mod = models$mod.t1[pos.same],
                  b1 = pars.t1[,2],b2 = pars.t2[,2], deltab = pars.t2[,2] - pars.t1[,2], stringsAsFactors = FALSE)
 db$solClass <- ifelse(db$solute %in% oldNut, "Nutrients","Tracers")
 db$solClass[db$solute %in% oldSolids] <- "Solids"
+db$solClass <- as.factor(db$solClass)
 
+#general basyesian regressions
 library(brms)
-
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
 b1.0 <-
   brm(data = db, family = gaussian,
       deltab ~ 1 + b1,
@@ -1348,12 +1319,8 @@ b1.0 <-
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 7)
 
-db$solClass <- as.factor(db$solClass)
-library(dplyr)
-library(ggplot2)
-library(ggthemes)
 f <-
-  fitted(b1.0, newdata = db) %>%  # we can use the same `nd` data from last time
+  fitted(b1.0, newdata = db) %>%
   as_tibble() %>%
   bind_cols(db)
 
@@ -1395,8 +1362,6 @@ dev.off()
 
 
 dt.test2 <- data.frame(dQ = bf$meanlogQ_t2[bf$solute %in% sol2]-bf$meanlogQ_t1[bf$solute %in% sol2], dC = bf$meanlogC_t2[bf$solute %in% sol2]-bf$meanlogC_t1[bf$solute %in% sol2], model = models$mod.all)
-
-
 
 ggplot(data = as.data.frame(f),aes(x = b1, color = solClass)) +
   geom_smooth(
@@ -1444,7 +1409,6 @@ ggplot(data = as.data.frame(f),aes(x = b1, color = solClass)) +
         legend.position = "none") +
   facet_wrap(~solClass)
 
-
 b1.2 <-
   brm(data = db, family = gaussian,
       deltab ~ 1 + b1 * solClass,
@@ -1486,9 +1450,8 @@ b1.3 <-
                 prior(uniform(0, 10), class = sigma)),
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 7,control = list(adapt_delta = 0.90, max_treedepth = 15))
-
 f <-
-  fitted(b1.3, newdata = db) %>%  # we can use the same `nd` data from last time
+  fitted(b1.3, newdata = db) %>%
   as_tibble() %>%
   bind_cols(db)
 
@@ -1513,7 +1476,6 @@ plot(marginal_effects(b1.3), points = T)
 
 posterior_summary(b1.3) %>% round(digits = 2)
 
-
 b1.4 <-
   brm(data = db, family = gaussian,
       deltab ~ 1 + b1 +  t1d,
@@ -1522,9 +1484,8 @@ b1.4 <-
                 prior(uniform(0, 10), class = sigma)),
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 7,control = list(adapt_delta = 0.90, max_treedepth = 15))
-
 f <-
-  fitted(b1.4, newdata = db) %>%  # we can use the same `nd` data from last time
+  fitted(b1.4, newdata = db) %>% 
   as_tibble() %>%
   bind_cols(db)
 
@@ -1843,9 +1804,6 @@ models$dQonQ[i] <- dQonQ
 }
 
 models2 <- cbind(bf,models[,(1:dim(models)[2])[-which(names(models) %in% names(bf))]])
-
-
-
 sol <- c("PO4.P.sol.react.SRP.FRP.mg.L","P.tot.TP.pTP.mg.L",
          "N.sum.sol.org.DON.mg.L","N.sum.sol.ox.NOx.N.TON.mg.L","N.tot.kjel.TKN.mg.L",
          "N.tot.org.TON.mg.L","N.tot.TN.pTN.mg.L","NH3.N.NH4.N.sol.mg.L", "NO3.N.sol.mg.L")
@@ -1862,7 +1820,6 @@ dt.test <- dt.test[dt.test$mod == "A",]
 res <- lm(dC~dQ,data = dt.test)
 library(mgcv)
 res <- gam(dC~s(dQ),data = dt.test)
-
 
 
 b1.x <-
@@ -1895,14 +1852,6 @@ dt.test$mod[dt.test$mod %in% c("A","AA1","AA2")] <- "A"
 dt.test$mod[dt.test$mod %in% c("D","DD1","DD2")] <- "D"
 dt.test$mod <- as.character(dt.test$mod)
 dt.test$mod <- as.factor(dt.test$mod)
-#dt.test <- dt.test[dt.test$mod == "D",]
-
-res <- lm(dC~dQ,data = dt.test)
-plot(res)
-library(mgcv)
-res <- gam(dC~s(dQ),data = dt.test)
-plot(res)
-
 
 b1.x <-
   brm(data = dt.test, family = gaussian,
@@ -1913,7 +1862,7 @@ b1.x <-
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 7)
 f <-
-  fitted(b1.x, newdata = dt.test) %>%  # we can use the same `nd` data from last time
+  fitted(b1.x, newdata = dt.test) %>% 
   as_tibble() %>%
   bind_cols(dt.test)
 
@@ -1926,8 +1875,6 @@ pos.dq <- sort(f$dQ,index.return = TRUE)$ix
 lines(f$dQ[pos.dq],f$Estimate[pos.dq])
 polygon(c(f$dQ[pos.dq],rev(f$dQ[pos.dq]),f$dQ[pos.dq][1]),c(f$Q2.5[pos.dq],rev(f$Q97.5[pos.dq]),f$Q2.5[pos.dq][1]),col=add.alpha(gridcols[4],0.5))
 legend("topleft",pch=19,col = gridcols[1:length(levels(as.factor(models2$solute[models2$solClass %in% sol])))],legend = levels(as.factor(models2$solute[models2$solClass %in% sol])),bty="n")
-
-
 
 
 sol <- oldNut
@@ -1979,11 +1926,6 @@ dt.test$mod <- as.character(dt.test$mod)
 dt.test$mod <- as.factor(dt.test$mod)
 res <- lm(dC~dQ,data = dt.test)
 summary(res)
-library(mgcv)
-
-res <- gam(dC~s(dQ),data = dt.test)
-summary(res)
-
 
 b1.x <-
   brm(data = dt.test, family = gaussian,
@@ -2017,7 +1959,6 @@ library(mgcv)
 res <- gam(dC~s(dQ),data = dt.test)
 summary(res)
 
-
 b1.x <-
   brm(data = dt.test, family = gaussian,
       dC ~ 1 + dQ,
@@ -2027,7 +1968,7 @@ b1.x <-
       iter = 2000, warmup = 1000, chains = 4, cores = 4,
       seed = 7)
 f <-
-  fitted(b1.x, newdata = dt.test) %>%  # we can use the same `nd` data from last time
+  fitted(b1.x, newdata = dt.test) %>% 
   as_tibble() %>%
   bind_cols(dt.test)
 f.trace <- f
@@ -2039,14 +1980,9 @@ dt.test$mod[dt.test$mod %in% c("A","AA1","AA2")] <- "A"
 dt.test$mod[dt.test$mod %in% c("D","DD1","DD2")] <- "D"
 dt.test$mod <- as.character(dt.test$mod)
 dt.test$mod <- as.factor(dt.test$mod)
-#dt.test <- dt.test[dt.test$mod == "A",]
 
 res <- lm(dC~dQ,data = dt.test)
 summary(res)
-library(mgcv)
-res <- gam(dC~s(dQ),data = dt.test)
-summary(res)
-
 
 b1.x <-
   brm(data = dt.test, family = gaussian,
@@ -2061,7 +1997,6 @@ f <- fitted(b1.x, newdata = dt.test) %>%  # we can use the same `nd` data from l
   bind_cols(dt.test)
 print(b1.x)
 f.solid <- f
-
 
 par(mfrow=c(1,3),mar=c(4,4,0.5,1),oma=c(0.5,1,0.5,0.5))
 sol <- oldNut[-c(2,8,10,11)]
@@ -2096,9 +2031,6 @@ pos.dq <- sort(f.solid$dQ,index.return = TRUE)$ix
 lines(f.solid$dQ[pos.dq],f.solid$Estimate[pos.dq])
 polygon(c(f.solid$dQ[pos.dq],rev(f.solid$dQ[pos.dq]),f.solid$dQ[pos.dq][1]),c(f.solid$Q2.5[pos.dq],rev(f.solid$Q97.5[pos.dq]),f.solid$Q2.5[pos.dq][1]),col=add.alpha(gridcols[4],0.5))
 legend("topleft",legend = "(c) Solids",bty="n")
-
-
-
 
 
 
@@ -2144,7 +2076,6 @@ plot(models$dQonQ[pos],
      abs(models$b1.t2[pos] - models$b1.t1[pos]))
 
 plot(models$b1.t2[models$mod.t1 == pattern] - models$b1.t1[models$mod.t1 == pattern], models$b2.t2[models$mod.t1 == pattern] - models$b2.t1[models$mod.t1 == pattern])
-
 plot(models$b1.t2[models$mod.t1 == pattern] - models$b1.t1[models$mod.t1 == pattern], models$dEonE[models$mod.t1 == pattern])
 plot(models$b1.t2[models$mod.t1 == pattern] - models$b1.t1[models$mod.t1 == pattern], models$dPonP[models$mod.t1 == pattern])
 plot(models$b1.t2[models$mod.t1 == pattern] - models$b1.t1[models$mod.t1 == pattern], models$dPETonPET[models$mod.t1 == pattern])
@@ -2252,9 +2183,6 @@ abline(0,-1); abline(v=0); abline(h=0);
 mod <- "DC"
 plot(models$b2.t1[models$mod.t1 == mod],models$b2.t2[models$mod.t1 == mod]-models$b2.t1[models$mod.t1 == mod],pch=1,col="red",xlim=c(-1.2,1.2),ylim=c(-0.7,0.7)); text(-1,-0.6,mod)
 abline(0,-1); abline(v=0); abline(h=0);
-#mod <- "AC"
-#plot(models$b2.t2[models$mod.t1 == mod],models$b2.t2[models$mod.t1 == mod]-models$b2.t1[models$mod.t1 == mod],pch=19,col="green",xlim=c(-1.2,1.2),ylim=c(-0.7,0.7))
-#abline(0,-1); abline(v=0); abline(h=0);
 
 par(mfrow=c(4,3), mar=c(1,1,1,1),oma=c(1,1,1,1))
 mod <- "A"
@@ -2294,14 +2222,11 @@ mod <- "DC"
 plot(models$b1.t1[models$mod.t1 == mod],models$b1.t2[models$mod.t1 == mod]-models$b1.t1[models$mod.t1 == mod],xlim=c(-1.2,1.2),ylim=c(-0.7,0.7)); text(-1,-0.6,mod)
 abline(0,-1); abline(v=0); abline(h=0);
 
-plot(models$dEonE,predict(lmbudyko,newdata = models))
-  
+plot(models$dEonE,predict(lmbudyko,newdata = models)) 
 boxplot(b1.t1~mod.t1,data=models, ylim=c(-1.5,1.5))
 boxplot(b2.t1~mod.t1,data=models,add=TRUE,col="blue")
-
 boxplot(b1.t2~mod.t2,data=models, ylim=c(-1.5,1.5))
 boxplot(b2.t2~mod.t2,data=models,add=TRUE,col="blue")
-
 boxplot(b1.tall~mod.all,data=models, ylim=c(-1.5,1.5))
 boxplot(b2.tall~mod.all,data=models,add=TRUE,col="blue")
 
@@ -2317,14 +2242,8 @@ db <- data.frame(mod = models$mod.t1[pos.same],
                  b1 = pars.t1[,2],b2 = pars.t2[,2], deltab = pars.t2[,2] - pars.t1[,2], stringsAsFactors = FALSE)
 
 
-
-
-
-
-
-
+#Rose Plots
 library(plotrix)
-
 plotRoseMod <- function(models,mod = "A", modtx = "mod.t1"){
   #mod <- "A"
   pos<- models[[modtx]] == mod & models$t1.days > 365*1 & models$t2.days > 365*1
@@ -2342,7 +2261,6 @@ plotRoseMod <- function(models,mod = "A", modtx = "mod.t1"){
   angle <- 45/2
   angles <- seq(0,360,by=angle)
   mydata$sector <-  angle * (as.numeric(cut(mydata$wd, seq(0, 360, angle)))-0.5)
-  
   mid.angles <- seq(angle/2,360,by=angle)
   
   #loop through each mid.angles count number of models
@@ -2507,7 +2425,6 @@ plotRoseMod2 <- function(models, mod = "A", modtx = "mod.t1"){
     piedata[[i]] <- c(0,cumsum(piedata[[i]])/length(mydata$sector)*100)
   }
   
-  
   radial.extents <- piedata
   #radial.pie <-
   #function (radial.extents){
@@ -2646,8 +2563,6 @@ text(9,2, paste(levels(models$mod.t1)[9]),cex=0.6,pos=4) #DA
 text(9,5, paste(levels(models$mod.t1)[11]),cex=0.6,pos=4)
 text(9,8, paste(levels(models$mod.t1)[10]),cex=0.6, pos=4)
 text(9,11,paste(levels(models$mod.t1)[8]),cex=0.6,pos=4)
-#text(9,11,paste(levels(models$mod.t1)[12]),cex=0.9,pos=4)
-
 
 plotRoseMod(models,mod = "AA1")
 mtext(side=3,line=-0.5,adj=0,"AA1",cex=0.8)
@@ -2682,7 +2597,6 @@ mtext(side=3,line=-0.5,adj=0,"CD",cex=0.8)
 plotRoseMod(models,mod = "DD2")
 mtext(side=3,line=-0.5,adj=0,"DD2",cex=0.8)
 
-
 plotRoseMod2(models,mod = "AA2")
 mtext(side=3,line=-0.5,adj=0,"AA2",cex=0.8)
 plotRoseMod2(models,mod = "CD")
@@ -2699,7 +2613,6 @@ plot(0, xlim = c(-1, 1), ylim = c(-1, 1), type = "n", axes = FALSE,
 plotRoseMod(models,mod = "DA")
 mtext(side=3,line=-0.5,adj=0,"DA",cex=0.8)
 
-
 plotRoseMod2(models,mod = "AD")
 mtext(side=3,line=-0.5,adj=0,"AD",cex=0.8)
 plot(0, xlim = c(-1, 1), ylim = c(-1, 1), type = "n", axes = FALSE,
@@ -2709,72 +2622,6 @@ mtext(side=3,line=-0.5,adj=0,"DA",cex=0.8)
 plot(0, xlim = c(-1, 1), ylim = c(-1, 1), type = "n", axes = FALSE,
      xlab = "", ylab = "")
 dev.off()
-# > summary(lmsolids)
-# 
-# Call:
-#   lm(formula = db$deltab[db$solute %in% oldSols] ~ db$b1[db$solute %in% 
-#                                                            oldSols])
-# 
-# Residuals:
-#   Min        1Q    Median        3Q       Max 
-# -0.122879 -0.017079  0.002921  0.022940  0.109874 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)  
-# (Intercept)                   0.013851   0.008396   1.650   0.1048  
-# db$b1[db$solute %in% oldSols] 0.150884   0.059826   2.522   0.0146 *
-#   ---
-#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-# 
-# Residual standard error: 0.04067 on 54 degrees of freedom
-# Multiple R-squared:  0.1054,	Adjusted R-squared:  0.08881 
-# F-statistic: 6.361 on 1 and 54 DF,  p-value: 0.01465
-# 
-# > summary(lmnutrients)
-# 
-# Call:
-#   lm(formula = db$deltab[db$solute %in% oldNut] ~ db$b1[db$solute %in% 
-#                                                           oldNut])
-# 
-# Residuals:
-#   Min       1Q   Median       3Q      Max 
-# -0.29044 -0.02113  0.01698  0.03529  0.15392 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)   
-# (Intercept)                  -0.02551    0.00827  -3.085  0.00265 **
-#   db$b1[db$solute %in% oldNut]  0.09401    0.03240   2.902  0.00459 **
-#   ---
-#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-# 
-# Residual standard error: 0.06527 on 98 degrees of freedom
-# Multiple R-squared:  0.07911,	Adjusted R-squared:  0.06971 
-# F-statistic: 8.419 on 1 and 98 DF,  p-value: 0.004586
-# 
-# > summary(lmtracers)
-# 
-# Call:
-#   lm(formula = db$deltab[db$solute %in% oldSolids] ~ db$b1[db$solute %in% 
-#                                                              oldSolids])
-# 
-# Residuals:
-#   Min        1Q    Median        3Q       Max 
-# -0.163281 -0.025220 -0.004653  0.032191  0.110037 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)  
-# (Intercept)                     -0.01144    0.01113  -1.027   0.3109  
-# db$b1[db$solute %in% oldSolids]  0.11944    0.04821   2.477   0.0179 *
-#   ---
-#   Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-# 
-# Residual standard error: 0.05367 on 37 degrees of freedom
-# Multiple R-squared:  0.1423,	Adjusted R-squared:  0.1191 
-# F-statistic: 6.137 on 1 and 37 DF,  p-value: 0.01793
-
-
-#Get data for piecewise regressions
-#Extract second exponent and plot how this changes as a function of model type
 
 pos.same <- which(models$mod.t1 %in% c("AA1","AA2","DD1","DD2","AC","AD","DC","DA","CA","CD") & models$mod.t2 %in% c("AA1","AA2","DD1","DD2","AC","AD","DC","DA","CA","CD") & (as.Date(bf$end.date) - as.Date(bf$start.date))/365 > 20)
 pars.t1 <- t(sapply(pos.same, FUN = function(x) t1res[[x]]$pars))
@@ -2820,7 +2667,6 @@ plot(db$delta1,db$delta2,col = cols, pch = 19, xlab = "",ylab = "", xlim=c(-1.5,
 mtext(side=1,line=2.5,expression(paste(delta,"(t1)",sep="")))
 mtext(side=2,line=2.5,expression(paste(delta,"(t2)",sep="")))
 abline(0,1)
-#Check how delta used to classify models
 
 
 
@@ -2855,7 +2701,6 @@ for (i in 1:length(catchments$SITE_REF)){
   catchments$dC_Cl[i] <- models2$meanlogC_t2[pos] - models2$meanlogC_t1[pos] 
   }
 }
-
 
 catchments["dC_Q"] <- NA
 for (i in 1:length(catchments$SITE_REF)){
@@ -2976,10 +2821,7 @@ catch.sp <- as_Spatial(catchments)
 aus.sp <- as_Spatial(Aust)
 library(raster)
 aus.sp2 <- crop(aus.sp,extent(c(113.5,123,-35.5,-27.5)))
-
 cols <- bpy.colors(n = 64, cutoff.tails = 0.1, alpha = 1.0) 
-
-
 
 plot(reset = FALSE, catchments[-which(is.na(catchments["PET"])),"PET"], key.pos = 4,ylim=c(-35.5,-27.7),xlim=c(115,121.8))
 plot(aus.sp2,add=TRUE)
